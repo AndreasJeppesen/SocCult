@@ -1,0 +1,399 @@
+---
+title: "SocCult data analysis"
+author: "Andreas Jeppesen and Helle Sørensen"
+date: "5/6/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(purrr)
+library(readr)
+library(stringr)
+```
+
+## We write a function to load all the data and do the necessary cleaning:
+
+```{r}
+
+read_stock <- function(filename) {
+  # load data
+  data <- read.csv(file = filename)
+  
+  # create empty filename column
+  data$filename <- ""
+  # put the filenames into this column
+  data$filename <- filename
+  # remove the whole path so only the actual filename is left
+  data$filename <- gsub("C:/Users/andre/OneDrive - Aarhus universitet/Cognitive Science/Social and Cultural Dynamics/Exam/Data_all/",
+                        "", data$filename)
+  
+  # with mutate
+  # create trial column by extracting the trial number from the filename (the filename col will be used as iteration col)
+  data <- data %>% 
+    mutate(
+      trial = str_extract(filename, regex("l\\d+")), # getting any number of digits after "l"
+      trial = as.numeric(gsub("l", "", trial)),      # removing "l" from the values in the trial col
+      
+      # Prolong the columns that only have a datapoint in the first row
+      wealth_slider = data[1,13],
+      weight_mean = data[1,14],
+      initial_price = data[1,15],
+      own_assessment_sd = data[1,16],
+      own_assessment_mean = data[1,17],
+      weight_sd = data[1,18],
+      initial_n_selling = data[1,19],
+      initial_n_buying = data[1,20]
+    ) %>%
+  
+  # Rename x and y columns to what they actually are (x cols are ticks, y cols are CP, n_selling, n_buying)
+  # I guess the 2nd and 3rd x column are redundant
+    rename(
+      tick_no = x,
+      CP = y,
+      n_selling = y.1,
+      n_buying = y.2
+    ) %>% 
+  
+  # Create volatility column based on CP column
+    mutate(
+      volatility = sd(CP)
+    ) %>% 
+  
+  # de-select columns we don't need:
+    select(
+      -x.1,
+      -color,
+      -pen.down.,
+      -color.1,
+      -pen.down..1,
+      -x.2,
+      -color.2,
+      -pen.down..2
+    )
+  
+  # changing columns to the correct format:
+  
+  data$tick_no <- as.numeric(data$tick_no)
+  data$CP <- as.numeric(data$CP)
+  data$n_selling <- as.numeric(data$n_selling)
+  data$n_buying <- as.numeric(data$n_buying)
+  data$wealth_slider <- as.numeric(data$wealth_slider)
+  data$weight_mean <- as.numeric(data$weight_mean)
+  data$initial_price <- as.numeric(data$initial_price)
+  data$own_assessment_sd <- as.numeric(data$own_assessment_sd)
+  data$own_assessment_mean <- as.numeric(data$own_assessment_mean)
+  data$weight_sd <- as.numeric(data$weight_sd)
+  data$initial_n_selling <- as.numeric(data$initial_n_selling)
+  data$initial_n_buying <- as.numeric(data$initial_n_buying)
+  data$filename <- as.factor(data$filename)
+  data$trial <- as.factor(data$trial)
+  data$volatility <- as.numeric(data$volatility)
+  
+  # return data
+  return(data)
+}
+
+
+
+# Create a list with all the data:
+list <- list.files(path = "C:/Users/andre/OneDrive - Aarhus universitet/Cognitive Science/Social and Cultural Dynamics/Exam/Data_all" , pattern = "*.csv", all.files = FALSE, full.names = TRUE)
+
+
+
+
+
+
+# Let's try out the function:
+
+#testlist <- list[1:4]
+
+#stock_data <- testlist %>% 
+#  purrr::map_df(read_stock)
+
+# Looks like it's working. Nice!
+
+
+
+# Reading all the data:
+stock_data <- list %>% 
+  purrr::map_df(read_stock)
+
+# Create a W2 column
+stock_data <- stock_data %>% 
+  mutate(
+    W2 = 1 - weight_mean
+  )
+
+```
+
+
+
+
+
+Test chunk for testing functions for the read_stock function and identifying bad files:
+
+```{r}
+df <- read.csv("C:/Users/andre/OneDrive - Aarhus universitet/Cognitive Science/Social and Cultural Dynamics/Exam/Data/trial1iteration0.723053789848823.csv")
+
+
+
+
+# Prolonging columns can be done like so:
+df <- df %>% 
+  mutate(
+    wealth_slider = df[1,13],
+    weight_mean = df[1,14],
+    initial_price = df[1,15]
+  )
+
+
+# Filename column is created like so:
+df$filename <- ""
+df$filename <- "C:/Users/andre/OneDrive - Aarhus universitet/Cognitive Science/Social and Cultural Dynamics/Exam/Data/trial1iteration0.723053789848823.csv"
+
+# And the path is removed from the name like so:
+df$filename <- gsub("C:/Users/andre/OneDrive - Aarhus universitet/Cognitive Science/Social and Cultural Dynamics/Exam/Data/", "", df$filename)
+
+df <- df %>% 
+  mutate(
+    trial = str_extract(df$filename, regex("l\\d+")), # getting any number of digits after l
+    iteration = str_extract(df$filename, regex("n\\d+")) #This does not work, so we ust use the filename col as the iteration col
+  )
+
+
+# Trying to de-select some columns:
+df <- df %>% 
+  select(
+    -x.2,
+    -color,
+    -color.1
+  )
+
+
+
+
+
+# A for loop for identifying files with error in them:
+for(i in list) {
+  i <- read_stock(i)
+}
+
+print(list)
+
+
+
+
+
+```
+
+
+
+Plotting the data in nice ways
+
+```{r}
+library(ggplot2)
+
+
+# A line graph example of a price development
+
+t1w0.05 <- stock_data %>% 
+  filter(
+    trial == 1 & weight_mean == 0.05
+  ) %>% 
+  ggplot() +
+  geom_line(aes(x = tick_no, y = CP)) +
+  theme_minimal() +
+  xlab("Tick") +
+  ylab("Current Price") +
+  ggtitle("Price development at mean weight 0.05, trial 1")
+
+t1w0.05
+
+
+
+
+# Plotting volatility at different weights, trial 1
+
+volplott1 <- stock_data %>% 
+  filter(
+    trial == 1 & weight_mean > 0 & weight_mean < 0.51
+    ) %>% 
+  ggplot() +
+  geom_point(aes(x = W2, y = volatility)) +
+  geom_line(aes(x = W2, y = volatility)) +
+  theme_minimal() +
+  xlab("Mean W2") +
+  ylab("Volatility") +
+  ggtitle("Volatilities at varying W2 means in trial 1")
+
+volplott1
+
+
+
+
+# Plotting volatility at different weights [0.01;0.05], trial 8
+
+volplott8 <- stock_data %>% 
+  filter(
+    trial == 8 & weight_mean > 0 & weight_mean < 0.06
+    ) %>% 
+  ggplot() +
+  geom_point(aes(x = weight_mean, y = volatility)) +
+  geom_line(aes(x = weight_mean, y = volatility)) +
+  theme_minimal() +
+  xlab("Mean Weight") +
+  ylab("Volatility") +
+  ggtitle("Volatilities at varying mean weights in trial 8")
+
+volplott8
+
+```
+
+
+
+Plots of fast changes in price and quick stabilization
+
+```{r}
+# Fast rise, trial 2
+t2w0.7 <- stock_data %>% 
+  filter(
+    trial == 2 & weight_mean == 0.7
+  ) %>% 
+  ggplot() +
+  geom_line(aes(x = tick_no, y = CP)) +
+  theme_minimal() +
+  xlab("Tick") +
+  ylab("Current Price") +
+  ggtitle("Price development at mean weight 0.7, trial 2")
+
+t2w0.7
+
+# Fast drop, trial 3
+t3w0.7 <- stock_data %>% 
+  filter(
+    trial == 3 & weight_mean == 0.7
+  ) %>% 
+  ggplot() +
+  geom_line(aes(x = tick_no, y = CP)) +
+  theme_minimal() +
+  xlab("Tick") +
+  ylab("Current Price") +
+  ggtitle("Price development at mean weight 0.7, trial 3")
+
+t3w0.7
+
+
+# Plot of t2 and t1 for comparison:
+t1and2w0.3 <- stock_data %>% 
+  filter(
+    trial == 1 & weight_mean == 0.30 |
+      trial == 7 & weight_mean == 0.30
+  ) %>% 
+  ggplot() +
+  geom_line(aes(x = tick_no, y = CP, color = trial)) +
+  theme_minimal() +
+  xlab("Tick") +
+  ylab("Current Price") +
+  ggtitle("Price development at mean weight 0.3") +
+  labs(color = "Trial")
+
+t1and2w0.3
+
+```
+
+
+Plotting volatility over weights for all trials:
+
+```{r}
+
+# All trials in one plot
+volplot <- stock_data %>% 
+  filter(
+    weight_mean > 0.04 & weight_mean < 0.31
+    ) %>% 
+  ggplot(aes(x = weight_mean, y = volatility, color = trial)) +
+  geom_point() +
+  geom_line() +
+  theme_minimal() +
+  xlab("Mean Weight") +
+  ylab("Volatility") +
+  ggtitle("Volatilities at varying mean weights")
+
+volplot
+
+
+
+
+
+# A plot for each trial
+
+# Dataframe containing points to highlight
+highlight_df <- stock_data %>% 
+  filter(
+    trial == 1 & weight_mean == 0.10 |
+      trial == 2 & weight_mean == 0.14 |
+      trial == 3 & weight_mean == 0.10 |
+      trial == 4 & weight_mean == 0.12 |
+      trial == 5 & weight_mean == 0.13 |
+      trial == 6 & weight_mean == 0.12 |
+      trial == 7 & weight_mean == 0.11 |
+      trial == 8 & weight_mean == 0.13 |
+      trial == 9 & weight_mean == 0.10)
+
+volplots <- stock_data %>% 
+  filter(
+    weight_mean > 0.03 & weight_mean < 0.31
+    ) %>% 
+  ggplot(aes(x = W2, y = volatility)) +
+  geom_point(size = 1.5) +
+  geom_line() +
+  theme_minimal() +
+  xlab("Mean W2") +
+  ylab("Volatility") +
+  ggtitle("Volatility at varying W2 means") +
+  facet_wrap(.~trial, labeller = labeller(trial = c("1" = "Trial 1", "2" = "Trial 2", "3" = "Trial 3", "4" = "Trial 4", "5" = "Trial 5", "6" = "Trial 6", "7" = "Trial 7", "8" = "Trial 8", "9" = "Trial 9"))) +
+  geom_point(data = highlight_df, aes(x = W2, y = volatility), color = "red", size = 2.5)
+
+volplots
+
+
+# Looking at whether all price developments stabilize at roughly the same price (at large weigths)
+
+#stock_data_large_weights <- stock_data %>% filter(weight_mean > 0.2)
+
+#aggregate(stock_data_large_weights$CP, list(stock_data_large_weights$trial), mean)
+```
+
+
+Plot of high volatility at low weight (and low volatility for comparison)
+
+```{r}
+# Trial 1, weight 0.5 and 0.95
+
+t1w0.5and0.95 <- stock_data %>% 
+  filter(
+    trial == 1 & W2 == 0.5 |
+      trial == 1 & W2 == 0.95
+  ) %>% 
+  mutate(
+    W2 = as.factor(W2)
+  ) %>% 
+  ggplot() +
+  geom_line(aes(x = tick_no, y = CP, color = W2)) +
+  theme_minimal() +
+  xlab("Tick") +
+  ylab("Current Price") +
+  ggtitle("Price development at mean weights 0.5 and 0.95 (Trial 1)")
+
+t1w0.5and0.95
+
+```
+
+
+
+
